@@ -1,0 +1,24 @@
+name: 'Maven Cache'
+description: 'Cache Maven m2 repository to improve workflow execution time'
+author: 'Thomas Skjølberg'
+inputs:
+  step:
+    description: 'Build step step, i.e. restore or save'
+    required: true
+  depth:
+    description: 'Maximum git history depth to search for changes to build files. Defaults to 100 commits.'
+    required: false
+  upload-chunk-size:
+    description: 'The chunk size used to split up large files during upload, in bytes'
+    required: false
+outputs:
+  cache-restore:
+    description: 'A value to indicate result of cache restore: none, partial or full.'
+runs:
+  using: 'node12'
+  main: 'dist/restore/index.js'
+  post: 'dist/save/index.js'
+  post-if: failure()
+branding:
+  icon: 'archive'
+  color: 'gray-dark'
