@@ -51247,7 +51247,7 @@ function prepareCleanup() {
         const path = mavenDirectory + "/repository/agent-1.0.0.jar";
         if (!fs.existsSync(path)) {
             utils.ensureMavenDirectoryExists();
-            yield downloadCacheHttpClient('https://oss.sonatype.org/content/repositories/snapshots/com/github/skjolber/maven-pom-recorder/agent/1.0.0-SNAPSHOT/agent-1.0.0-20210205.195614-3.jar', path);
+            yield downloadCacheHttpClient('https://repo1.maven.org/maven2/com/github/skjolber/maven-pom-recorder/agent/1.0.0/agent-1.0.0.jar', path);
         }
         if (fs.existsSync(path)) {
             const mavenrc = os.homedir() + "/.mavenrc";
