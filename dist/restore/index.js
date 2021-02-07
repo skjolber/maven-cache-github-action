@@ -46860,7 +46860,7 @@ function run() {
                         console.log("Save cache for successful build..");
                         //file exists
                         const successKey = fs.readFileSync(absolutePath, { encoding: 'utf8', flag: 'r' });
-                        maven.performCleanup(constants_1.CachePaths);
+                        yield maven.performCleanup(constants_1.CachePaths);
                         try {
                             yield cache.saveCache(constants_1.CachePaths, successKey, {
                                 uploadChunkSize: utils.getInputAsInt(constants_1.Inputs.UploadChunkSize)

@@ -310,7 +310,7 @@ async function run(): Promise<void> {
                 //file exists
                 const successKey = fs.readFileSync(absolutePath, {encoding:'utf8', flag:'r'});
 
-                maven.performCleanup(CachePaths);
+                await maven.performCleanup(CachePaths);
 
                 try {
                     await cache.saveCache(CachePaths, successKey, {
