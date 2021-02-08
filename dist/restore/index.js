@@ -46648,16 +46648,10 @@ function runGitCommand(parameters) {
             ignoreReturnCode: false,
             listeners: {
                 stdout: (data) => {
-                    // limit output
-                    if (standardOut.length < 256 * 1024) {
-                        standardOut += data.toString();
-                    }
+                    standardOut += data.toString();
                 },
                 stderr: (data) => {
-                    // limit output
-                    if (errorOut.length < 256 * 1024) {
-                        errorOut += data.toString();
-                    }
+                    errorOut += data.toString();
                 }
             }
         });
@@ -46765,7 +46759,9 @@ function run() {
                 const prefix = `${githubWorkspace}${path.sep}`;
                 let gitFiles = new Array();
                 for (var file of files) {
-                    gitFiles.push(file.substring(prefix.length));
+                    const fileInGitRepo = file.substring(prefix.length);
+                    gitFiles.push(fileInGitRepo);
+                    console.log("Build file " + fileInGitRepo);
                 }
                 var logTarget = "HEAD";
                 // check whether we are on a PR or
@@ -46787,21 +46783,29 @@ function run() {
                 let hashes = new Array();
                 if (detached) {
                     const gitFilesHashOutput = yield runGitCommand(["log", "--pretty=format:%H", "--"].concat(gitFiles));
-                    hashes.concat(gitFilesHashOutput.standardOutAsStringArray());
+                    for (var hash of gitFilesHashOutput.standardOutAsStringArray()) {
+                        hashes.push(hash);
+                    }
                 }
                 const gitFilesHashOutput = yield runGitCommand(["log", "--pretty=format:%H", logTarget, "--"].concat(gitFiles));
-                hashes.concat(gitFilesHashOutput.standardOutAsStringArray());
+                for (var hash of gitFilesHashOutput.standardOutAsStringArray()) {
+                    hashes.push(hash);
+                }
+                console.log("Found " + hashes.length + " hashes");
                 // get the commit hash messages
                 let commmitHashMessages = new Array();
                 if (detached) {
                     const commitMessages = yield runGitCommand(["log", "--format=%H %B"]);
-                    commmitHashMessages.concat(commitMessages.standardOutAsStringArray());
+                    for (var hash of commitMessages.standardOutAsStringArray()) {
+                        commmitHashMessages.push(hash);
+                    }
                 }
                 const commitMessages = yield runGitCommand(["log", "--format=%H %B", logTarget]);
-                commmitHashMessages.concat(commitMessages.standardOutAsStringArray());
+                for (var hash of commitMessages.standardOutAsStringArray()) {
+                    commmitHashMessages.push(hash);
+                }
                 let restoreKeys = new Array();
-                var goByHash = hashes.length > 0;
-                if (goByHash) {
+                if (hashes.length > 0) {
                     // check commit history for [cache clear] messages,
                     // delete all previous hash commits up to and including [cache clear], insert the [cache clear] itself
                     // check commit messages for [cache clear] commit messages
