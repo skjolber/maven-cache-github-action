@@ -1,15 +1,7 @@
 # Maven Cache Github Action
 This [Github Action](https://docs.github.com/en/actions) adds support for __caching Maven dependencies between builds__.
 
-Its main advantage over the [Github Cache Action](https://github.com/actions/cache) is that it is able to restore the cache also when the build files (i.e. pom files) are modified. It trivially does so by looking for build file changes in Git history.
-
-Advantages:
-
- * faster and more predictable builds times
- * considerably less load on your artifact store
- * plug and play: no external service or state necessary
-
-So this action is especially well suited for projects with frequent updates to build files, for example due to enabling  automatic tools like [Renovate](https://github.com/renovatebot/renovate) or [Snyk](https://snyk.io/).
+This action restores previous caches with the help of the git history, and continously clears unused dependencies, for faster and more predictable builds times.
 
 ## Usage
 The `skjolber/maven-cache-github-action` action must be present __twice__ in your build job, with `step: restore` and `step: save` parameters:
