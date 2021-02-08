@@ -4,7 +4,8 @@ export const MaxCacheKeys = 10
 export const CacheClearSearchString = "[cache clear]"
 export const BuildFilesSearch = ["**/pom.xml"]
 export const M2Path = "~/.m2"
-export const CachePaths = [M2Path + "/repository"]
+export const M2RepositoryPath = "~/.m2/repository"
+export const CachePaths = [M2RepositoryPath]
 export const DefaultGitHistoryDepth = 100
 export const RestoreKeyPath = M2Path + "/cache-restore-key-success"
 

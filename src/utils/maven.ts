@@ -61,9 +61,8 @@ export async function prepareCleanup(): Promise<void> {
 
     const mavenDirectory = utils.ensureMavenDirectoryExists()
 
-    const path = mavenDirectory + "/repository/agent-1.0.0.jar";
+    const path = mavenDirectory + "/agent-1.0.0.jar";
     if (!fs.existsSync(path)) {
-        utils.ensureMavenDirectoryExists()
         await downloadCacheHttpClient('https://repo1.maven.org/maven2/com/github/skjolber/maven-pom-recorder/agent/1.0.0/agent-1.0.0.jar', path);
     }
     if (fs.existsSync(path)) {

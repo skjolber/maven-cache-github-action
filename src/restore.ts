@@ -43,6 +43,24 @@ class GitOutput {
 
 }
 
+async function getCommitLogTarget() : Promise<string | undefined> {
+  // git show --pretty=raw
+    const showOutput = await runGitCommand(["show", "--pretty=raw"]);
+
+    const show = showOutput.standardOutAsString()
+
+    const search = "parent ";
+
+    const index = show.indexOf(search);
+    if(index != -1) {
+        const endIndex = show.indexOf("\n", index + search.length);
+        if(endIndex != -1) {
+            return show.substring(index + search.length, endIndex);
+        }
+    }
+    return undefined;
+}
+
 async function runGitCommand(parameters : Array<string>) : Promise<GitOutput> {
   let standardOut = '';
   let errorOut = '';
@@ -53,10 +71,16 @@ async function runGitCommand(parameters : Array<string>) : Promise<GitOutput> {
       ignoreReturnCode: false,
       listeners: {
           stdout: (data: Buffer) => {
-              standardOut += data.toString();
+              // limit output
+              if(standardOut.length < 256*1024) {
+                  standardOut += data.toString();
+              }
           },
           stderr: (data: Buffer) => {
-              errorOut += data.toString();
+            // limit output
+              if(errorOut.length < 256*1024) {
+                  errorOut += data.toString();
+              }
           }
       }
   });
@@ -177,21 +201,49 @@ async function run(): Promise<void> {
               gitFiles.push(file.substring(prefix.length));
           }
 
-          const gitFilesHashOutput = await runGitCommand(["log", "--pretty=format:%H", "HEAD", "--"].concat(gitFiles));
+          var logTarget = "HEAD";
+          // check whether we are on a PR or
+          const gitRevParse = await runGitCommand(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD"]);
 
-          let hashes = gitFilesHashOutput.standardOutAsStringArray()
+          var detached = gitRevParse.standardOutAsString().trim() === "HEAD";
+          if(detached) {
+              // ups, on a detached branch, most likely a pull request
+              // so no history is available
+              console.log("Try to determine parent for detached commit");
+              var detachedLogTarget = await getCommitLogTarget();
+              if(detachedLogTarget) {
+                  logTarget = detachedLogTarget;
+                  console.log("Found detached parent " + logTarget);
+              } else {
+                console.log("Unable to determine detached parent");
+              }
+          }
+
+          let hashes = new Array<string>();
+
+          if(detached) {
+              const gitFilesHashOutput = await runGitCommand(["log", "--pretty=format:%H", "--"].concat(gitFiles));
+              hashes.concat(gitFilesHashOutput.standardOutAsStringArray())
+          }
+
+          const gitFilesHashOutput = await runGitCommand(["log", "--pretty=format:%H", logTarget, "--"].concat(gitFiles));
+          hashes.concat(gitFilesHashOutput.standardOutAsStringArray())
+
+          // get the commit hash messages
+          let commmitHashMessages = new Array<string>();
+          if(detached) {
+              const commitMessages = await runGitCommand(["log", "--format=%H %B"]);
+              commmitHashMessages.concat(commitMessages.standardOutAsStringArray());
+          }
+          const commitMessages = await runGitCommand(["log", "--format=%H %B", logTarget]);
+          commmitHashMessages.concat(commitMessages.standardOutAsStringArray());
 
           let restoreKeys = new Array<string>();
-
           var goByHash = hashes.length > 0
           if(goByHash) {
               // check commit history for [cache clear] messages,
               // delete all previous hash commits up to and including [cache clear], insert the [cache clear] itself
               // check commit messages for [cache clear] commit messages
-
-              const commitMessages = await runGitCommand(["log", "--format=%H %B"]);
-              var commmitHashMessages = commitMessages.standardOutAsStringArray();
-
               const commitIndex = utils.searchCommitMessages(commmitHashMessages);
               if(commitIndex != -1) {
                   console.log(`Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`);
@@ -222,9 +274,6 @@ async function run(): Promise<void> {
               }
           } else {
               // search all of history for a [clear cache] message
-              const commitMessages = await runGitCommand(["log", "--format=%H %B"]);
-              var commmitHashMessages = commitMessages.standardOutAsStringArray();
-
               const commitIndex = utils.searchCommitMessages(commmitHashMessages);
               if(commitIndex != -1) {
                   console.log(`Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`);
@@ -283,6 +332,7 @@ async function run(): Promise<void> {
                           // i.e. do not save another cache if the build fails again
                       } else {
                           core.info(`Cache is outdated, expect to save a new cache.`);
+                          console.log("If build is successful, save to key " + restoreKeySuccess + ". If build fails, save to " + restoreKeyFailure)
                           utils.ensureMavenDirectoryExists()
                           fs.writeFileSync(utils.toAbsolutePath(RestoreKeyPath), restoreKeySuccess);
 

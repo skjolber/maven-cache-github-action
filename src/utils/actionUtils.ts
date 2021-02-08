@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as os from 'os'
 import * as fs from 'fs'
 
-import { Restore, Outputs, RefKey, State, CacheClearSearchString, M2Path} from "../constants";
+import { Restore, Outputs, RefKey, State, CacheClearSearchString, M2RepositoryPath} from "../constants";
 
 export function isGhes(): boolean {
     const ghUrl = new URL(
@@ -43,7 +43,7 @@ export function toAbsolutePath(path : string) : string {
 }
 
 export function ensureMavenDirectoryExists() : string {
-    const mavenDirectory = toAbsolutePath(M2Path);
+    const mavenDirectory = toAbsolutePath(M2RepositoryPath);
     if (!fs.existsSync(mavenDirectory)) {
         fs.mkdirSync(mavenDirectory, { recursive: true });
     }

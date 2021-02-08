@@ -4727,12 +4727,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 "use strict";
 
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RefKey = exports.Restore = exports.Events = exports.BuildSystems = exports.State = exports.Outputs = exports.Inputs = exports.RestoreKeyPath = exports.DefaultGitHistoryDepth = exports.CachePaths = exports.M2Path = exports.BuildFilesSearch = exports.CacheClearSearchString = exports.MaxCacheKeys = void 0;
+exports.RefKey = exports.Restore = exports.Events = exports.BuildSystems = exports.State = exports.Outputs = exports.Inputs = exports.RestoreKeyPath = exports.DefaultGitHistoryDepth = exports.CachePaths = exports.M2RepositoryPath = exports.M2Path = exports.BuildFilesSearch = exports.CacheClearSearchString = exports.MaxCacheKeys = void 0;
 exports.MaxCacheKeys = 10;
 exports.CacheClearSearchString = "[cache clear]";
 exports.BuildFilesSearch = ["**/pom.xml"];
 exports.M2Path = "~/.m2";
-exports.CachePaths = [exports.M2Path + "/repository"];
+exports.M2RepositoryPath = "~/.m2/repository";
+exports.CachePaths = [exports.M2RepositoryPath];
 exports.DefaultGitHistoryDepth = 100;
 exports.RestoreKeyPath = exports.M2Path + "/cache-restore-key-success";
 var Inputs;
@@ -37361,7 +37362,7 @@ function toAbsolutePath(path) {
 }
 exports.toAbsolutePath = toAbsolutePath;
 function ensureMavenDirectoryExists() {
-    const mavenDirectory = toAbsolutePath(constants_1.M2Path);
+    const mavenDirectory = toAbsolutePath(constants_1.M2RepositoryPath);
     if (!fs.existsSync(mavenDirectory)) {
         fs.mkdirSync(mavenDirectory, { recursive: true });
     }
@@ -46621,6 +46622,22 @@ class GitOutput {
             .filter(x => x !== "");
     }
 }
+function getCommitLogTarget() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // git show --pretty=raw
+        const showOutput = yield runGitCommand(["show", "--pretty=raw"]);
+        const show = showOutput.standardOutAsString();
+        const search = "parent ";
+        const index = show.indexOf(search);
+        if (index != -1) {
+            const endIndex = show.indexOf("\n", index + search.length);
+            if (endIndex != -1) {
+                return show.substring(index + search.length, endIndex);
+            }
+        }
+        return undefined;
+    });
+}
 function runGitCommand(parameters) {
     return __awaiter(this, void 0, void 0, function* () {
         let standardOut = '';
@@ -46631,10 +46648,16 @@ function runGitCommand(parameters) {
             ignoreReturnCode: false,
             listeners: {
                 stdout: (data) => {
-                    standardOut += data.toString();
+                    // limit output
+                    if (standardOut.length < 256 * 1024) {
+                        standardOut += data.toString();
+                    }
                 },
                 stderr: (data) => {
-                    errorOut += data.toString();
+                    // limit output
+                    if (errorOut.length < 256 * 1024) {
+                        errorOut += data.toString();
+                    }
                 }
             }
         });
@@ -46744,16 +46767,44 @@ function run() {
                 for (var file of files) {
                     gitFiles.push(file.substring(prefix.length));
                 }
-                const gitFilesHashOutput = yield runGitCommand(["log", "--pretty=format:%H", "HEAD", "--"].concat(gitFiles));
-                let hashes = gitFilesHashOutput.standardOutAsStringArray();
+                var logTarget = "HEAD";
+                // check whether we are on a PR or
+                const gitRevParse = yield runGitCommand(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD"]);
+                var detached = gitRevParse.standardOutAsString().trim() === "HEAD";
+                if (detached) {
+                    // ups, on a detached branch, most likely a pull request
+                    // so no history is available
+                    console.log("Try to determine parent for detached commit");
+                    var detachedLogTarget = yield getCommitLogTarget();
+                    if (detachedLogTarget) {
+                        logTarget = detachedLogTarget;
+                        console.log("Found detached parent " + logTarget);
+                    }
+                    else {
+                        console.log("Unable to determine detached parent");
+                    }
+                }
+                let hashes = new Array();
+                if (detached) {
+                    const gitFilesHashOutput = yield runGitCommand(["log", "--pretty=format:%H", "--"].concat(gitFiles));
+                    hashes.concat(gitFilesHashOutput.standardOutAsStringArray());
+                }
+                const gitFilesHashOutput = yield runGitCommand(["log", "--pretty=format:%H", logTarget, "--"].concat(gitFiles));
+                hashes.concat(gitFilesHashOutput.standardOutAsStringArray());
+                // get the commit hash messages
+                let commmitHashMessages = new Array();
+                if (detached) {
+                    const commitMessages = yield runGitCommand(["log", "--format=%H %B"]);
+                    commmitHashMessages.concat(commitMessages.standardOutAsStringArray());
+                }
+                const commitMessages = yield runGitCommand(["log", "--format=%H %B", logTarget]);
+                commmitHashMessages.concat(commitMessages.standardOutAsStringArray());
                 let restoreKeys = new Array();
                 var goByHash = hashes.length > 0;
                 if (goByHash) {
                     // check commit history for [cache clear] messages,
                     // delete all previous hash commits up to and including [cache clear], insert the [cache clear] itself
                     // check commit messages for [cache clear] commit messages
-                    const commitMessages = yield runGitCommand(["log", "--format=%H %B"]);
-                    var commmitHashMessages = commitMessages.standardOutAsStringArray();
                     const commitIndex = utils.searchCommitMessages(commmitHashMessages);
                     if (commitIndex != -1) {
                         console.log(`Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`);
@@ -46781,8 +46832,6 @@ function run() {
                 }
                 else {
                     // search all of history for a [clear cache] message
-                    const commitMessages = yield runGitCommand(["log", "--format=%H %B"]);
-                    var commmitHashMessages = commitMessages.standardOutAsStringArray();
                     const commitIndex = utils.searchCommitMessages(commmitHashMessages);
                     if (commitIndex != -1) {
                         console.log(`Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`);
@@ -46834,6 +46883,7 @@ function run() {
                             }
                             else {
                                 core.info(`Cache is outdated, expect to save a new cache.`);
+                                console.log("If build is successful, save to key " + restoreKeySuccess + ". If build fails, save to " + restoreKeyFailure);
                                 utils.ensureMavenDirectoryExists();
                                 fs.writeFileSync(utils.toAbsolutePath(constants_1.RestoreKeyPath), restoreKeySuccess);
                                 core.saveState(constants_1.State.FailureHash, restoreKeyFailure);
@@ -51244,9 +51294,8 @@ function prepareCleanup() {
         console.log("Prepare for cleanup of Maven cache..");
         const homedir = os.homedir();
         const mavenDirectory = utils.ensureMavenDirectoryExists();
-        const path = mavenDirectory + "/repository/agent-1.0.0.jar";
+        const path = mavenDirectory + "/agent-1.0.0.jar";
         if (!fs.existsSync(path)) {
-            utils.ensureMavenDirectoryExists();
             yield downloadCacheHttpClient('https://repo1.maven.org/maven2/com/github/skjolber/maven-pom-recorder/agent/1.0.0/agent-1.0.0.jar', path);
         }
         if (fs.existsSync(path)) {
