@@ -30,6 +30,8 @@ jobs:
           step: save
 ```
 
+__Note: Always use -U / --update-snapshots __
+
 ### Inputs
 
 * `step` - Build step, i.e. `restore` or `save` (required).
