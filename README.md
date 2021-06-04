@@ -30,7 +30,7 @@ jobs:
           step: save
 ```
 
-__Note: Always use -U / --update-snapshots __
+**Note: Always use -U / --update-snapshots**
 
 ### Inputs
 
