@@ -78,12 +78,22 @@ async function findPoms(paths: Array<string>) : Promise<Set<string>> {
   let buildFiles = new Set<string>();
 
   for (var path of paths) {
-    const globber = await glob.create(paths + "/**/*.pom", {followSymbolicLinks : false})
+    const globber = await glob.create(path + "/**/*.pom", {followSymbolicLinks : false})
     for await (const file of globber.globGenerator()) {
         buildFiles.add(file);
     }
   }
   return buildFiles;
+}
+
+export async function removeResolutionAttempts(paths: Array<string>) : Promise<void> {
+  console.log("Remove resolution attempts..");
+  for (var path of paths) {
+    const globber = await glob.create(path + "/**/*.lastUpdated", {followSymbolicLinks : false})
+    for await (const file of globber.globGenerator()) {
+      fs.unlinkSync(file);
+    }
+  }
 }
 
 export async function performCleanup(paths : Array<string>): Promise<void> {

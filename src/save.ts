@@ -2,6 +2,7 @@ import * as cache from "@actions/cache";
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as path from 'path'
+import * as maven from "./utils/maven";
 
 import { Events, Inputs, State, CachePaths } from "./constants";
 import * as utils from "./utils/actionUtils";
@@ -17,6 +18,10 @@ async function run(): Promise<void> {
 
     if(hash.length > 0) {
         console.log("Save cache for failed build..");
+
+        // nuke resolution attempts, so that resolution is always reattempted on next build
+
+        await maven.removeResolutionAttempts(CachePaths);
 
         try {
             await cache.saveCache(CachePaths, hash, {
