@@ -3,6 +3,8 @@ This [Github Action](https://docs.github.com/en/actions) adds support for __cach
 
 This action restores previous caches with the help of the git history, and continously clears unused dependencies, for faster and more predictable builds times.
 
+ Note that Github deletes caches after a week, so this action is best suited for project under constant development, i.e. over time accumulating a lot of outdated dependencies from previous builds.
+
 ## Usage
 The `skjolber/maven-cache-github-action` action must be present __twice__ in your build job, with `step: restore` and `step: save` parameters:
 
@@ -30,7 +32,7 @@ jobs:
           step: save
 ```
 
-**Note: Always use -U / --update-snapshots**
+The second steps saves your cache even if the dependencies were only partially resolved. 
 
 ### Inputs
 
