@@ -61,5 +61,6 @@ Add `[cache clear]` to a commit-message build with a new, empty cache entry.
 The scripts and documentation in this project are released under the [MIT License](LICENSE)
 
 ## See Also
+ * [Tidy Cache](https://github.com/marketplace/actions/tidy-cache) - clear cache (for successful builds only)
  * Entur [CircleCI Maven Orb](https://github.com/entur/maven-orb)
  * Github [Cache Action](https://github.com/actions/cache)
