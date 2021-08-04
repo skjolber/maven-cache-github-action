@@ -51262,7 +51262,6 @@ function removeResolutionAttempts(paths) {
             try {
                 for (var _b = (e_2 = void 0, __asyncValues(globber.globGenerator())), _c; _c = yield _b.next(), !_c.done;) {
                     const file = _c.value;
-                    console.log("Delete " + file);
                     fs.unlinkSync(file);
                 }
             }
