@@ -15,7 +15,7 @@ outputs:
   cache-restore:
     description: 'A value to indicate result of cache restore: none, partial or full.'
 runs:
-  using: 'node12'
+  using: 'node16'
   main: 'dist/restore/index.js'
   post: 'dist/save/index.js'
   post-if: failure()
