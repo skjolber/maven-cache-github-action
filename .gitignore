@@ -94,3 +94,7 @@ typings/
 
 # Text editor files
 .vscode/
+
+.idea/
+
+target/
