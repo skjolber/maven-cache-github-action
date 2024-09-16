@@ -1,111 +1,123 @@
 import * as cache from "@actions/cache";
-import * as glob from '@actions/glob'
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
-import * as io from "@actions/io";
-import * as fs from 'fs'
-import * as path from 'path'
-import * as crypto from 'crypto'
-import * as util from 'util'
-import * as stream from 'stream'
-import * as os from 'os'
+import * as glob from "@actions/glob";
+import * as crypto from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+import * as stream from "stream";
+import * as util from "util";
 
-import { Restore, Events, Inputs, State, MaxCacheKeys, BuildFilesSearch, CachePaths, M2Path, DefaultGitHistoryDepth, RestoreKeyPath} from "./constants";
+import {
+    BuildFilesSearch,
+    CachePaths,
+    DefaultGitHistoryDepth,
+    Events,
+    Inputs,
+    MaxCacheKeys,
+    Restore,
+    RestoreKeyPath,
+    State
+} from "./constants";
 import * as utils from "./utils/actionUtils";
 import * as maven from "./utils/maven";
 
 class GitOutput {
-  standardOut : string;
-  errorOut : string;
+    standardOut: string;
+    errorOut: string;
 
-  constructor(standardOut : string, errorOut : string) {
-    this.standardOut = standardOut;
-    this.errorOut = errorOut;
-  }
+    constructor(standardOut: string, errorOut: string) {
+        this.standardOut = standardOut;
+        this.errorOut = errorOut;
+    }
 
-  getStandardOut() {
-    return this.standardOut;
-  }
+    getStandardOut() {
+        return this.standardOut;
+    }
 
-  getErrorOut() {
-    return this.errorOut;
-  }
+    getErrorOut() {
+        return this.errorOut;
+    }
 
-  standardOutAsString() {
-    return this.standardOut.trim()
-  }
+    standardOutAsString() {
+        return this.standardOut.trim();
+    }
 
-  standardOutAsStringArray() {
-    return this.standardOut.split("\n")
-    .map(s => s.trim())
-    .filter(x => x !== "");
-  }
-
+    standardOutAsStringArray() {
+        return this.standardOut
+            .split("\n")
+            .map(s => s.trim())
+            .filter(x => x !== "");
+    }
 }
 
-async function getCommitLogTarget() : Promise<string | undefined> {
-  // git show --pretty=raw
+async function getCommitLogTarget(): Promise<string | undefined> {
+    // git show --pretty=raw
     const showOutput = await runGitCommand(["show", "--pretty=raw"]);
 
-    const show = showOutput.standardOutAsString()
+    const show = showOutput.standardOutAsString();
 
     const search = "parent ";
 
     const index = show.indexOf(search);
-    if(index != -1) {
+    if (index != -1) {
         const endIndex = show.indexOf("\n", index + search.length);
-        if(endIndex != -1) {
+        if (endIndex != -1) {
             return show.substring(index + search.length, endIndex);
         }
     }
     return undefined;
 }
 
-async function runGitCommand(parameters : Array<string>) : Promise<GitOutput> {
-  let standardOut = '';
-  let errorOut = '';
+async function runGitCommand(parameters: Array<string>): Promise<GitOutput> {
+    let standardOut = "";
+    let errorOut = "";
 
-  await exec.exec('git', parameters, {
-      silent: true,
-      failOnStdErr: false,
-      ignoreReturnCode: false,
-      listeners: {
-          stdout: (data: Buffer) => {
-              standardOut += data.toString();
-          },
-          stderr: (data: Buffer) => {
-              errorOut += data.toString();
-          }
-      }
-  });
+    await exec.exec("git", parameters, {
+        silent: true,
+        failOnStdErr: false,
+        ignoreReturnCode: false,
+        listeners: {
+            stdout: (data: Buffer) => {
+                standardOut += data.toString();
+            },
+            stderr: (data: Buffer) => {
+                errorOut += data.toString();
+            }
+        }
+    });
 
-  return new GitOutput(standardOut, errorOut);
+    return new GitOutput(standardOut, errorOut);
 }
 
-async function findFiles(matchPatterns : Array<string>) : Promise<Array<string>> {
-    let buildFiles = new Array<string>();
+async function findFiles(matchPatterns: Array<string>): Promise<Array<string>> {
+    const buildFiles = new Array<string>();
 
-    let followSymbolicLinks = false
-    if (process.env.followSymbolicLinks === 'true') {
-        console.log('Follow symbolic links')
-        followSymbolicLinks = true
+    let followSymbolicLinks = false;
+    if (process.env.followSymbolicLinks === "true") {
+        console.log("Follow symbolic links");
+        followSymbolicLinks = true;
     }
 
-    const githubWorkspace = process.cwd()
-    const prefix = `${githubWorkspace}${path.sep}`
+    const githubWorkspace = process.cwd();
+    const prefix = `${githubWorkspace}${path.sep}`;
 
-    for (var matchPattern of matchPatterns) {
-        const globber = await glob.create(matchPattern, {followSymbolicLinks : followSymbolicLinks})
+    for (const matchPattern of matchPatterns) {
+        const globber = await glob.create(matchPattern, {
+            followSymbolicLinks: followSymbolicLinks
+        });
         for await (const file of globber.globGenerator()) {
             if (!file.startsWith(prefix)) {
-              console.log(`Ignore '${file}' since it is not under GITHUB_WORKSPACE.`)
-              continue
+                console.log(
+                    `Ignore '${file}' since it is not under GITHUB_WORKSPACE.`
+                );
+                continue;
             }
             if (fs.statSync(file).isDirectory()) {
-              console.log(`Skip directory '${file}'.`)
-              continue
+                console.log(`Skip directory '${file}'.`);
+                continue;
             }
-            console.log(`Found ${file}`)
+            console.log(`Found ${file}`);
 
             buildFiles.push(file);
         }
@@ -113,22 +125,28 @@ async function findFiles(matchPatterns : Array<string>) : Promise<Array<string>>
     return buildFiles;
 }
 
-async function restoreCache(keys : Array<string>) : Promise<string | undefined> {
-    for(var offset = 0; offset < keys.length; offset += MaxCacheKeys) {
-        var limit = Math.min(offset + MaxCacheKeys, keys.length);
+async function restoreCache(keys: Array<string>): Promise<string | undefined> {
+    for (let offset = 0; offset < keys.length; offset += MaxCacheKeys) {
+        const limit = Math.min(offset + MaxCacheKeys, keys.length);
 
-        var subkeys = keys.slice(offset, limit);
+        const subkeys = keys.slice(offset, limit);
 
-        let firstSubkey = subkeys[0];
-        subkeys.shift()
+        const firstSubkey = subkeys[0];
+        subkeys.shift();
+
+        const enableCrossOsArchive = utils.getInputAsBool(
+            Inputs.EnableCrossOsArchive
+        );
 
         const cacheKey = await cache.restoreCache(
             CachePaths,
             firstSubkey,
-            subkeys
+            subkeys,
+            { lookupOnly: false },
+            enableCrossOsArchive
         );
 
-        if(cacheKey) {
+        if (cacheKey) {
             return cacheKey;
         }
     }
@@ -157,238 +175,336 @@ async function run(): Promise<void> {
     try {
         const step = core.getInput(Inputs.Step, { required: true });
         core.saveState(State.Step, step);
-        if(step === "restore") {
-          if (utils.isGhes()) {
-              utils.logWarning("Cache action is not supported on GHES");
-              utils.setCacheRestoreOutput(Restore.None);
-              return;
-          }
+        if (step === "restore") {
+            if (utils.isGhes()) {
+                utils.logWarning("Cache action is not supported on GHES");
+                utils.setCacheRestoreOutput(Restore.None);
+                return;
+            }
 
-          // https://github.com/actions/runner/blob/c18c8746db0b7662a13da5596412c05c1ffb07dd/src/Misc/expressionFunc/hashFiles/src/hashFiles.ts
+            // https://github.com/actions/runner/blob/c18c8746db0b7662a13da5596412c05c1ffb07dd/src/Misc/expressionFunc/hashFiles/src/hashFiles.ts
 
-          // Validate inputs, this can cause task failure
-          if (!utils.isValidEvent()) {
-              utils.logWarning(
-                  `Event Validation Error: The event type ${
-                      process.env[Events.Key]
-                  } is not supported because it's not tied to a branch or tag ref.`
-              );
-              return;
-          }
+            // Validate inputs, this can cause task failure
+            if (!utils.isValidEvent()) {
+                utils.logWarning(
+                    `Event Validation Error: The event type ${
+                        process.env[Events.Key]
+                    } is not supported because it's not tied to a branch or tag ref.`
+                );
+                return;
+            }
 
-          var parameterCacheKeyPrefix = "maven"
+            const parameterCacheKeyPrefix = "maven";
 
-          let files = await findFiles(BuildFilesSearch);
-          if(files.length == 0) {
-              utils.logWarning("No build files found for expression " + BuildFilesSearch +", cache cannot be restored");
-              return
-          }
+            const files = await findFiles(BuildFilesSearch);
+            if (files.length == 0) {
+                utils.logWarning(
+                    "No build files found for expression " +
+                        BuildFilesSearch +
+                        ", cache cannot be restored"
+                );
+                return;
+            }
 
-          const depth = core.getInput(Inputs.Depth, { required: false }) || DefaultGitHistoryDepth;
-          const fetchOutput = await runGitCommand(["fetch", "--deepen=" + depth]);
+            const depth =
+                core.getInput(Inputs.Depth, { required: false }) ||
+                DefaultGitHistoryDepth;
+            await runGitCommand(["fetch", "--deepen=" + depth]);
 
-          const githubWorkspace = process.cwd()
-          const prefix = `${githubWorkspace}${path.sep}`
+            const githubWorkspace = process.cwd();
+            const prefix = `${githubWorkspace}${path.sep}`;
 
-          let gitFiles = new Array<string>();
-          for (var file of files) {
-              const fileInGitRepo = file.substring(prefix.length);
-              gitFiles.push(fileInGitRepo);
+            const gitFiles = new Array<string>();
+            for (const file of files) {
+                const fileInGitRepo = file.substring(prefix.length);
+                gitFiles.push(fileInGitRepo);
 
-              console.log("Build file " + fileInGitRepo)
-          }
+                console.log("Build file " + fileInGitRepo);
+            }
 
-          var logTarget = "HEAD";
-          // check whether we are on a PR or
-          const gitRevParse = await runGitCommand(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD"]);
+            let logTarget = "HEAD";
+            // check whether we are on a PR or
+            const gitRevParse = await runGitCommand([
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "HEAD"
+            ]);
 
-          var detached = gitRevParse.standardOutAsString().trim() === "HEAD";
-          if(detached) {
-              // ups, on a detached branch, most likely a pull request
-              // so no history is available
-              console.log("Try to determine parent for detached commit");
-              var detachedLogTarget = await getCommitLogTarget();
-              if(detachedLogTarget) {
-                  logTarget = detachedLogTarget;
-                  console.log("Found detached parent " + logTarget);
-              } else {
-                console.log("Unable to determine detached parent");
-              }
-          }
+            const detached =
+                gitRevParse.standardOutAsString().trim() === "HEAD";
+            if (detached) {
+                // ups, on a detached branch, most likely a pull request
+                // so no history is available
+                console.log("Try to determine parent for detached commit");
+                const detachedLogTarget = await getCommitLogTarget();
+                if (detachedLogTarget) {
+                    logTarget = detachedLogTarget;
+                    console.log("Found detached parent " + logTarget);
+                } else {
+                    console.log("Unable to determine detached parent");
+                }
+            }
 
-          let hashes = new Array<string>();
+            let hashes = new Array<string>();
 
-          if(detached) {
-              const gitFilesHashOutput = await runGitCommand(["log", "--pretty=format:%H", "--"].concat(gitFiles));
-              for(var hash of gitFilesHashOutput.standardOutAsStringArray()) {
-                  hashes.push(hash)
-              }
-          }
+            if (detached) {
+                const gitFilesHashOutput = await runGitCommand(
+                    ["log", "--pretty=format:%H", "--"].concat(gitFiles)
+                );
+                for (const hash of gitFilesHashOutput.standardOutAsStringArray()) {
+                    hashes.push(hash);
+                }
+            }
 
-          const gitFilesHashOutput = await runGitCommand(["log", "--pretty=format:%H", logTarget, "--"].concat(gitFiles));
-          for(var hash of gitFilesHashOutput.standardOutAsStringArray()) {
-              hashes.push(hash)
-          }
-          console.log("Found " + hashes.length + " hashes");
-          // get the commit hash messages
-          let commmitHashMessages = new Array<string>();
-          if(detached) {
-              const commitMessages = await runGitCommand(["log", "--format=%H %B"]);
-              for(var hash of commitMessages.standardOutAsStringArray()) {
-                  commmitHashMessages.push(hash)
-              }
-          }
-          const commitMessages = await runGitCommand(["log", "--format=%H %B", logTarget]);
-          for(var hash of commitMessages.standardOutAsStringArray()) {
-              commmitHashMessages.push(hash)
-          }
+            const gitFilesHashOutput = await runGitCommand(
+                ["log", "--pretty=format:%H", logTarget, "--"].concat(gitFiles)
+            );
+            for (const hash of gitFilesHashOutput.standardOutAsStringArray()) {
+                hashes.push(hash);
+            }
+            console.log("Found " + hashes.length + " hashes");
+            // get the commit hash messages
+            const commmitHashMessages = new Array<string>();
+            if (detached) {
+                const commitMessages = await runGitCommand([
+                    "log",
+                    "--format=%H %B"
+                ]);
+                for (const hash of commitMessages.standardOutAsStringArray()) {
+                    commmitHashMessages.push(hash);
+                }
+            }
+            const commitMessages = await runGitCommand([
+                "log",
+                "--format=%H %B",
+                logTarget
+            ]);
+            for (const hash of commitMessages.standardOutAsStringArray()) {
+                commmitHashMessages.push(hash);
+            }
 
-          let restoreKeys = new Array<string>();
-          if(hashes.length > 0) {
-              // check commit history for [cache clear] messages,
-              // delete all previous hash commits up to and including [cache clear], insert the [cache clear] itself
-              // check commit messages for [cache clear] commit messages
-              const commitIndex = utils.searchCommitMessages(commmitHashMessages);
-              if(commitIndex != -1) {
-                  console.log(`Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`);
+            const restoreKeys = new Array<string>();
+            if (hashes.length > 0) {
+                // check commit history for [cache clear] messages,
+                // delete all previous hash commits up to and including [cache clear], insert the [cache clear] itself
+                // check commit messages for [cache clear] commit messages
+                const commitIndex =
+                    utils.searchCommitMessages(commmitHashMessages);
+                if (commitIndex != -1) {
+                    console.log(
+                        `Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`
+                    );
 
-                  // determine which commits should be ejected
-                  // scan through all later commits from the [clear cache] message
-                  // and nuke all hash keys if a match is found
-                  for(var k = commitIndex; k < commmitHashMessages.length; k++) {
-                      var str = commmitHashMessages[k];
-                      var h = str.substr(0, str.indexOf(' '));
-                      const index = hashes.indexOf(h);
-                      if(index > -1) {
-                          hashes = hashes.splice(0, index)
-                          break;
-                      }
-                  }
+                    // determine which commits should be ejected
+                    // scan through all later commits from the [clear cache] message
+                    // and nuke all hash keys if a match is found
+                    for (
+                        let k = commitIndex;
+                        k < commmitHashMessages.length;
+                        k++
+                    ) {
+                        const str = commmitHashMessages[k];
+                        const h = str.substr(0, str.indexOf(" "));
+                        const index = hashes.indexOf(h);
+                        if (index > -1) {
+                            hashes = hashes.splice(0, index);
+                            break;
+                        }
+                    }
 
-                  // add the commit with the [clean cache] as a potential cache restore point
-                  var str = commmitHashMessages[commitIndex];
-                  hashes.push(str.substr(0,str.indexOf(' ')));
-              }
+                    // add the commit with the [clean cache] as a potential cache restore point
+                    const str = commmitHashMessages[commitIndex];
+                    hashes.push(str.substr(0, str.indexOf(" ")));
+                }
 
-              console.log(`Will attempt for restore cache from ${hashes.length} commits`)
+                console.log(
+                    `Will attempt for restore cache from ${hashes.length} commits`
+                );
 
-              for (var hash of hashes) {
-                  restoreKeys.push(`${parameterCacheKeyPrefix}-${hash}-success`)
-                  restoreKeys.push(`${parameterCacheKeyPrefix}-${hash}-failure`)
-              }
-          } else {
-              // search all of history for a [clear cache] message
-              const commitIndex = utils.searchCommitMessages(commmitHashMessages);
-              if(commitIndex != -1) {
-                  console.log(`Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`);
+                for (const hash of hashes) {
+                    restoreKeys.push(
+                        `${parameterCacheKeyPrefix}-${hash}-success`
+                    );
+                    restoreKeys.push(
+                        `${parameterCacheKeyPrefix}-${hash}-failure`
+                    );
+                }
+            } else {
+                // search all of history for a [clear cache] message
+                const commitIndex =
+                    utils.searchCommitMessages(commmitHashMessages);
+                if (commitIndex != -1) {
+                    console.log(
+                        `Cache cleaned in commit ${commmitHashMessages[commitIndex]}. Ignore all previous caches.`
+                    );
 
-                  restoreKeys.push(`${parameterCacheKeyPrefix}-${commmitHashMessages[commitIndex]}-success`);
-                  restoreKeys.push(`${parameterCacheKeyPrefix}-${commmitHashMessages[commitIndex]}-failure`);
-              } else {
-                  console.log("No git history found for build files, fall back to using file hash instead");
+                    restoreKeys.push(
+                        `${parameterCacheKeyPrefix}-${commmitHashMessages[commitIndex]}-success`
+                    );
+                    restoreKeys.push(
+                        `${parameterCacheKeyPrefix}-${commmitHashMessages[commitIndex]}-failure`
+                    );
+                } else {
+                    console.log(
+                        "No git history found for build files, fall back to using file hash instead"
+                    );
 
-                  const result = crypto.createHash('sha256');
-                  for (var file of files) {
-                      const hash = crypto.createHash('sha256');
-                      const pipeline = util.promisify(stream.pipeline);
-                      await pipeline(fs.createReadStream(file), hash);
-                      result.write(hash.digest());
-                  }
-                  result.end();
+                    const result = crypto.createHash("sha256");
+                    for (const file of files) {
+                        const hash = crypto.createHash("sha256");
+                        const pipeline = util.promisify(stream.pipeline);
+                        await pipeline(fs.createReadStream(file), hash);
+                        result.write(hash.digest());
+                    }
+                    result.end();
 
-                  const hashAsString = result.digest('hex');
+                    const hashAsString = result.digest("hex");
 
-                  restoreKeys.push(`${parameterCacheKeyPrefix}-${hashAsString}-success`);
-                  restoreKeys.push(`${parameterCacheKeyPrefix}-${hashAsString}-failure`);
-              }
-          }
+                    restoreKeys.push(
+                        `${parameterCacheKeyPrefix}-${hashAsString}-success`
+                    );
+                    restoreKeys.push(
+                        `${parameterCacheKeyPrefix}-${hashAsString}-failure`
+                    );
+                }
+            }
 
-          let restoreKeySuccess = restoreKeys[0];
-          let restoreKeyFailure = restoreKeys[1];
+            const restoreKeySuccess = restoreKeys[0];
+            const restoreKeyFailure = restoreKeys[1];
 
-          try {
-              var cacheKey = await restoreCache(restoreKeys)
+            try {
+                const cacheKey = await restoreCache(restoreKeys);
 
-              if (!cacheKey) {
-                  console.log("No cache found for current or previous build files. Expect to save a new cache.");
-                  utils.setCacheRestoreOutput(Restore.None);
+                if (!cacheKey) {
+                    console.log(
+                        "No cache found for current or previous build files. Expect to save a new cache."
+                    );
+                    utils.setCacheRestoreOutput(Restore.None);
 
-                  utils.ensureMavenDirectoryExists()
-                  console.log("If build is successful, save to key " + restoreKeySuccess + ". If build fails, save to " + restoreKeyFailure)
-                  fs.writeFileSync(utils.toAbsolutePath(RestoreKeyPath), restoreKeySuccess);
-                  core.saveState(State.FailureHash, restoreKeyFailure);
+                    utils.ensureMavenDirectoryExists();
+                    console.log(
+                        "If build is successful, save to key " +
+                            restoreKeySuccess +
+                            ". If build fails, save to " +
+                            restoreKeyFailure
+                    );
+                    fs.writeFileSync(
+                        utils.toAbsolutePath(RestoreKeyPath),
+                        restoreKeySuccess
+                    );
+                    core.saveState(State.FailureHash, restoreKeyFailure);
 
-                  // no point in cleaning cache
-              } else {
-                  const primaryMatch = cacheKey != null && utils.isExactKeyMatch(restoreKeySuccess, cacheKey);
-                  if(primaryMatch) {
-                      core.info(`Cache is up to date.`);
-                      utils.setCacheRestoreOutput(Restore.Full);
-                  } else {
-                      const secondaryMatch = cacheKey != null && utils.isExactKeyMatch(restoreKeyFailure, cacheKey);
-                      if(secondaryMatch) {
-                          core.info(`Cache was left over after a failed build, expect to clean and save a new cache if build is successful.`);
-                          utils.ensureMavenDirectoryExists()
-
-                          console.log("If build is successful, save to key " + restoreKeySuccess + ". If build fails, save to " + restoreKeyFailure)
-                          fs.writeFileSync(utils.toAbsolutePath(RestoreKeyPath), restoreKeySuccess);
-
-                          // i.e. do not save another cache if the build fails again
-                      } else {
-                          core.info(`Cache is outdated, expect to save a new cache.`);
-                          console.log("If build is successful, save to key " + restoreKeySuccess + ". If build fails, save to " + restoreKeyFailure)
-                          utils.ensureMavenDirectoryExists()
-                          fs.writeFileSync(utils.toAbsolutePath(RestoreKeyPath), restoreKeySuccess);
-
-                          core.saveState(State.FailureHash, restoreKeyFailure);
-                      }
-                      utils.setCacheRestoreOutput(Restore.Partial);
-
-                      maven.prepareCleanup();
-                  }
-              }
-          } catch (error) {
-              if (error.name === cache.ValidationError.name) {
-                  throw error;
-              } else {
-                  utils.logWarning(error.message);
-                  utils.setCacheRestoreOutput(Restore.None);
-              }
-          }
-        } else if(step === "save") {
-          try {
-              const absolutePath = utils.toAbsolutePath(RestoreKeyPath)
-              if (fs.existsSync(absolutePath)) {
-                console.log("Save cache for successful build..");
-
-                //file exists
-                const successKey = fs.readFileSync(absolutePath, {encoding:'utf8', flag:'r'});
-
-                await maven.performCleanup(CachePaths);
-
-                try {
-                    await cache.saveCache(CachePaths, successKey, {
-                        uploadChunkSize: utils.getInputAsInt(Inputs.UploadChunkSize)
-                    });
-                } catch (error) {
-                    if (error.name === cache.ValidationError.name) {
-                        throw error;
-                    } else if (error.name === cache.ReserveCacheError.name) {
-                        core.info(error.message);
+                    // no point in cleaning cache
+                } else {
+                    const primaryMatch =
+                        cacheKey != null &&
+                        utils.isExactKeyMatch(restoreKeySuccess, cacheKey);
+                    if (primaryMatch) {
+                        core.info(`Cache is up to date.`);
+                        utils.setCacheRestoreOutput(Restore.Full);
                     } else {
-                        utils.logWarning(error.message);
+                        const secondaryMatch =
+                            cacheKey != null &&
+                            utils.isExactKeyMatch(restoreKeyFailure, cacheKey);
+                        if (secondaryMatch) {
+                            core.info(
+                                `Cache was left over after a failed build, expect to clean and save a new cache if build is successful.`
+                            );
+                            utils.ensureMavenDirectoryExists();
+
+                            console.log(
+                                "If build is successful, save to key " +
+                                    restoreKeySuccess +
+                                    ". If build fails, save to " +
+                                    restoreKeyFailure
+                            );
+                            fs.writeFileSync(
+                                utils.toAbsolutePath(RestoreKeyPath),
+                                restoreKeySuccess
+                            );
+
+                            // i.e. do not save another cache if the build fails again
+                        } else {
+                            core.info(
+                                `Cache is outdated, expect to save a new cache.`
+                            );
+                            console.log(
+                                "If build is successful, save to key " +
+                                    restoreKeySuccess +
+                                    ". If build fails, save to " +
+                                    restoreKeyFailure
+                            );
+                            utils.ensureMavenDirectoryExists();
+                            fs.writeFileSync(
+                                utils.toAbsolutePath(RestoreKeyPath),
+                                restoreKeySuccess
+                            );
+
+                            core.saveState(
+                                State.FailureHash,
+                                restoreKeyFailure
+                            );
+                        }
+                        utils.setCacheRestoreOutput(Restore.Partial);
+
+                        maven.prepareCleanup();
                     }
                 }
-              } else {
-                  console.error("Skip saving cache for successful build; cache is already up to date.")
-              }
-          } catch(err) {
-              console.error(err)
-          }
+            } catch (err: unknown) {
+                const error = err as Error;
+                if (error.name === cache.ValidationError.name) {
+                    throw error;
+                } else {
+                    utils.logWarning(error.message);
+                    utils.setCacheRestoreOutput(Restore.None);
+                }
+            }
+        } else if (step === "save") {
+            try {
+                const absolutePath = utils.toAbsolutePath(RestoreKeyPath);
+                if (fs.existsSync(absolutePath)) {
+                    console.log("Save cache for successful build..");
+
+                    //file exists
+                    const successKey = fs.readFileSync(absolutePath, {
+                        encoding: "utf8",
+                        flag: "r"
+                    });
+
+                    await maven.performCleanup(CachePaths);
+
+                    try {
+                        await cache.saveCache(CachePaths, successKey, {
+                            uploadChunkSize: utils.getInputAsInt(
+                                Inputs.UploadChunkSize
+                            )
+                        });
+                    } catch (err) {
+                        const error = err as Error;
+                        if (error.name === cache.ValidationError.name) {
+                            throw error;
+                        } else if (
+                            error.name === cache.ReserveCacheError.name
+                        ) {
+                            core.info(error.message);
+                        } else {
+                            utils.logWarning(error.message);
+                        }
+                    }
+                } else {
+                    console.error(
+                        "Skip saving cache for successful build; cache is already up to date."
+                    );
+                }
+            } catch (err) {
+                console.error(err);
+            }
         } else {
             core.setFailed("Step must be 'restore' or 'save'");
         }
-    } catch (error) {
+    } catch (err) {
+        const error = err as Error;
         core.setFailed(error.message);
     }
 }
