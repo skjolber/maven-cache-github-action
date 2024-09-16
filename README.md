@@ -3,13 +3,20 @@ This [Github Action](https://docs.github.com/en/actions) adds improved support f
 
 Features:
   * restores previous caches with the help of the git history
-  * continously clears unused dependencies
+  * clears unused dependencies before saving caches
 
 Benefits:
   * faster and more predictable builds times
   * considerably load reduction on artifact repositories
 
-Note that this action is primarily intended for use with (private) third party repositories, but works well with Maven Central as well (note that Github seems to have an excellent network connection to Maven Central).
+Audience:
+  * primarily intended for use with (private) third party repositories, i.e. 'one repo to rule them all'
+    * repos which act as artifact caches for other remote repositories and/or
+    * repos with limited transfer capacity, and/or
+    * repos where data transfer is limited or [increases cost](https://jfrog.com/pricing/)
+  * also works well with Maven Central 
+
+Note that Github seems to have an excellent network connection to Maven Central, so reducing the reliance of the (private) third party repositories by lettings projects additionally (i.e. first) connect directly to Maven Central might be a good alternative.
 
 ## Usage
 The `skjolber/maven-cache-github-action` action must be present __twice__ in your build job, with `step: restore` and `step: save` parameters:
