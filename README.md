@@ -1,9 +1,15 @@
 # Maven Cache Github Action
-This [Github Action](https://docs.github.com/en/actions) adds support for __caching Maven dependencies between builds__.
+This [Github Action](https://docs.github.com/en/actions) adds improved support for __caching Maven dependencies between builds__ compared to Github's built-in Maven cache.
 
-This action restores previous caches with the help of the git history, and continously clears unused dependencies, for faster and more predictable builds times.
+Features:
+  * restores previous caches with the help of the git history
+  * continously clears unused dependencies
 
-It is __especially well suited for projects under constant development (updated more than once a week)__, which over time will accumulate a lot of outdated dependencies from previous builds. 
+Benefits:
+  * faster and more predictable builds times
+  * considerably load reduction on artifact repositories
+
+Note that this action is primarily intended for use with (private) third party repositories, but works well with Maven Central as well (note that Github seems to have an excellent network connection to Maven Central).
 
 ## Usage
 The `skjolber/maven-cache-github-action` action must be present __twice__ in your build job, with `step: restore` and `step: save` parameters:
@@ -15,11 +21,12 @@ jobs:
     name: Maven build with caching
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-      - name: Set up JDK 1.8
-        uses: actions/setup-java@v1
+        uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
-          java-version: 1.8
+          java-version: 21
+          distribution: liberica
       - name: Restore Maven cache
         uses: skjolber/maven-cache-github-action@v1
         with:
@@ -37,8 +44,9 @@ The second steps saves your cache even if the dependencies were only partially r
 ### Inputs
 
 * `step` - Build step, i.e. `restore` or `save` (required).
-* `depth` - Maximum git history depth to search for changes to build files. Default to 100 commits (optional).
+* `depth` - Maximum git history depth to search for changes to build files (optional, default 100 commits).
 * `upload-chunk-size` - The chunk size used to split up large files during upload, in bytes (optional).
+* `enableCrossOsArchive` - An optional boolean when enabled, allows windows runners to save or restore caches that can be restored or saved respectively on other platforms (optional, defaults to false).
 
 ### Outputs
 
