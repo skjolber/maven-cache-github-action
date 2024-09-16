@@ -1,8 +1,14 @@
 import * as core from "@actions/core";
-import * as os from 'os'
-import * as fs from 'fs'
+import * as fs from "fs";
+import * as os from "os";
 
-import { Restore, Outputs, RefKey, State, CacheClearSearchString, M2RepositoryPath} from "../constants";
+import {
+    CacheClearSearchString,
+    M2RepositoryPath,
+    Outputs,
+    RefKey,
+    Restore
+} from "../constants";
 
 export function isGhes(): boolean {
     const ghUrl = new URL(
@@ -35,27 +41,27 @@ export function isValidEvent(): boolean {
     return RefKey in process.env && Boolean(process.env[RefKey]);
 }
 
-export function toAbsolutePath(path : string) : string {
-    if (path[0] === '~') {
-      path = os.homedir() + path.slice(1);
+export function toAbsolutePath(path: string): string {
+    if (path[0] === "~") {
+        path = os.homedir() + path.slice(1);
     }
-    return path
+    return path;
 }
 
-export function ensureMavenDirectoryExists() : string {
+export function ensureMavenDirectoryExists(): string {
     const mavenDirectory = toAbsolutePath(M2RepositoryPath);
     if (!fs.existsSync(mavenDirectory)) {
         fs.mkdirSync(mavenDirectory, { recursive: true });
     }
-    return mavenDirectory
+    return mavenDirectory;
 }
 
 export function getOptionalInputAsString(
     name: string,
     defaultValue: string
 ): string {
-    var x = core.getInput(name, {required: false}).trim();
-    if(x !== "") {
+    const x = core.getInput(name, { required: false }).trim();
+    if (x !== "") {
         return x;
     }
     return defaultValue;
@@ -63,25 +69,25 @@ export function getOptionalInputAsString(
 
 export function searchCommitMessages(
     commmitHashMessages: Array<string>
-  ): number {
-    for (var i = 0; i < commmitHashMessages.length; i++) {
-        if(commmitHashMessages[i].includes(CacheClearSearchString)) {
+): number {
+    for (let i = 0; i < commmitHashMessages.length; i++) {
+        if (commmitHashMessages[i].includes(CacheClearSearchString)) {
             return i;
         }
     }
     return -1;
-
-  }
+}
 
 export function getOptionalInputAsStringArray(
     name: string,
     defaultValue: Array<string>
 ): string[] {
-    var value = core.getInput(name, {required: false})
-      .split("\n")
-      .map(s => s.trim())
-      .filter(x => x !== "");
-    if(value.length > 0) {
+    const value = core
+        .getInput(name, { required: false })
+        .split("\n")
+        .map(s => s.trim())
+        .filter(x => x !== "");
+    if (value.length > 0) {
         return value;
     }
     return defaultValue;
@@ -107,4 +113,12 @@ export function getInputAsInt(
         return undefined;
     }
     return value;
+}
+
+export function getInputAsBool(
+    name: string,
+    options?: core.InputOptions
+): boolean {
+    const result = core.getInput(name, options);
+    return result.toLowerCase() === "true";
 }

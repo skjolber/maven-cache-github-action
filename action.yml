@@ -11,11 +11,15 @@ inputs:
   upload-chunk-size:
     description: 'The chunk size used to split up large files during upload, in bytes'
     required: false
+  enableCrossOsArchive:
+    description: 'An optional boolean when enabled, allows windows runners to save or restore caches that can be restored or saved respectively on other platforms'
+    default: 'false'
+    required: false
 outputs:
   cache-restore:
     description: 'A value to indicate result of cache restore: none, partial or full.'
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/restore/index.js'
   post: 'dist/save/index.js'
   post-if: failure()
