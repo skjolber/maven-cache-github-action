@@ -1,4 +1,6 @@
+import * as cache from "@actions/cache";
 import * as core from "@actions/core";
+import * as crypto from "crypto";
 import * as glob from "@actions/glob";
 import { HttpClient, HttpClientResponse } from "@actions/http-client";
 import * as fs from "fs";
@@ -7,7 +9,7 @@ import * as path from "path";
 import * as stream from "stream";
 import * as util from "util";
 
-import { M2Path } from "./../constants";
+import { Inputs, M2Path, MavenWrapperPath, MavenWrapperPropertiesPath, RestoreWrapperKeyPath } from "./../constants";
 import * as utils from "./actionUtils";
 import { SocketTimeout } from "./constants";
 import { retryHttpClientResponse } from "./requestUtils";
@@ -97,6 +99,7 @@ export async function removeResolutionAttempts(
     }
 }
 
+// although this function does not clean up anything, we still need to save the cache since there might be new additions
 export async function performCleanup(paths: Array<string>): Promise<void> {
     const pomsInUse = new Set<string>();
 
@@ -135,26 +138,186 @@ export async function performCleanup(paths: Array<string>): Promise<void> {
             poms.delete(pom);
         }
 
-        console.log(
-            "Delete " +
-                poms.size +
-                " cached artifacts which are no longer in use."
-        );
+        if(poms.size > 0) {
+          console.log(
+              "Delete " +
+                  poms.size +
+                  " cached artifacts which are no longer in use."
+          );
 
-        for (const pom of poms) {
-            const parent = path.dirname(pom);
-            console.log("Delete directory " + parent);
-            if (!fs.existsSync(parent)) {
-                console.log("Parent does not exist");
-            }
+          for (const pom of poms) {
+              const parent = path.dirname(pom);
+              console.log("Delete directory " + parent);
+              if (!fs.existsSync(parent)) {
+                  console.log("Parent unexpectedly does not exist");
+              }
 
-            fs.rmdirSync(parent, { recursive: true });
+              fs.rmSync(parent, { recursive: true });
 
-            if (fs.existsSync(parent)) {
-                console.log("Parent exists");
-            }
+              if (fs.existsSync(parent)) {
+                  console.log("Parent unexpectedly still exists");
+              }
+          }
         }
     } else {
         console.log("Cache cleanup not necessary.");
     }
+}
+
+
+export async function getFileHash(files: Array<string>) {
+  const result = crypto.createHash("sha256");
+  for (const file of files) {
+      const hash = crypto.createHash("sha256");
+      const pipeline = util.promisify(stream.pipeline);
+      await pipeline(fs.createReadStream(file), hash);
+      result.write(hash.digest());
+  }
+  result.end();
+
+  return result.digest("hex");
+}
+
+export async function saveWrapperCache() {
+  // simple file-hash based wrapper cache
+
+  const key = loadWrapperCacheKey();
+  if (key) {
+      if (utils.isMavenWrapperDirectory()) {
+          const enableCrossOsArchive = utils.getInputAsBool(
+              Inputs.EnableCrossOsArchive
+          );
+
+          try {
+              console.log("Saving Maven wrapper..");
+              const result = await cache.saveCache(
+                  [MavenWrapperPath],
+                  key,
+                  {
+                      uploadChunkSize: utils.getInputAsInt(
+                          Inputs.UploadChunkSize
+                      )
+                  },
+                  enableCrossOsArchive
+              );
+              console.log("Saved Maven wrapper.");
+              return result;
+          } catch (err) {
+              const error = err as Error;
+              if (error.name === cache.ValidationError.name) {
+                  throw error;
+              } else if (error.name === cache.ReserveCacheError.name) {
+                  core.info(error.message);
+              } else {
+                  utils.logWarning(error.message);
+              }
+              console.log("Unable to save maven wrapper.");
+          }
+      } else {
+          console.log(
+              "Not saving Maven wrapper, directory " +
+                  MavenWrapperPath +
+                  " does not exist."
+          );
+      }
+  } else {
+      console.log("Not saving Maven wrapper");
+  }
+  return undefined;
+}
+
+export async function restoreWrapperCache() {
+  // simple file-hash based wrapper cache
+
+  const files = await findFiles([MavenWrapperPropertiesPath]);
+  if (files.length > 0) {
+      const hash = await getFileHash(files);
+
+      const enableCrossOsArchive = utils.getInputAsBool(
+          Inputs.EnableCrossOsArchive
+      );
+
+      const cacheKeyPrefix = utils.getCacheKeyPrefix();
+
+      const key = cacheKeyPrefix + "-wrapper-" + hash;
+
+      console.log("Restoring Maven wrapper..");
+      const cacheKey = await cache.restoreCache(
+          [MavenWrapperPath],
+          key,
+          [],
+          { lookupOnly: false },
+          enableCrossOsArchive
+      );
+
+      if (cacheKey) {
+          console.log("Maven wrapper restored successfully");
+
+          return cacheKey;
+      }
+      console.log("Unable to restore Maven wrapper, cache miss.");
+
+      // save wrapper once build completes
+      saveWrapperCacheKey(key);
+  } else {
+      console.log(
+          "Not restoring Maven wrapper, no files fount for " +
+              MavenWrapperPropertiesPath +
+              "."
+      );
+  }
+  return undefined;
+}
+
+const loadWrapperCacheKey = function () {
+  const absolutePath = utils.toAbsolutePath(RestoreWrapperKeyPath);
+  if (fs.existsSync(absolutePath)) {
+      //file exists
+      const key = fs.readFileSync(absolutePath, {
+          encoding: "utf8",
+          flag: "r"
+      });
+      return key;
+  }
+  return undefined;
+};
+
+const saveWrapperCacheKey = function (value: string) {
+  utils.ensureMavenDirectoryExists();
+  console.log("If build is successful, save wrapper to key " + value);
+  fs.writeFileSync(utils.toAbsolutePath(RestoreWrapperKeyPath), value);
+};
+
+export async function findFiles(matchPatterns: Array<string>): Promise<Array<string>> {
+  const buildFiles = new Array<string>();
+
+  let followSymbolicLinks = false;
+  if (process.env.followSymbolicLinks === "true") {
+      console.log("Follow symbolic links");
+      followSymbolicLinks = true;
+  }
+
+  const githubWorkspace = process.cwd();
+  const prefix = `${githubWorkspace}${path.sep}`;
+
+  for (const matchPattern of matchPatterns) {
+      const globber = await glob.create(matchPattern, {
+          followSymbolicLinks: followSymbolicLinks
+      });
+      for await (const file of globber.globGenerator()) {
+          if (!file.startsWith(prefix)) {
+              console.log(
+                  `Ignore '${file}' since it is not under GITHUB_WORKSPACE.`
+              );
+              continue;
+          }
+          if (fs.statSync(file).isDirectory()) {
+              console.log(`Skip directory '${file}'.`);
+              continue;
+          }
+
+          buildFiles.push(file);
+      }
+  }
+  return buildFiles;
 }

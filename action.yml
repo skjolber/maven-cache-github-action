@@ -15,6 +15,18 @@ inputs:
     description: 'An optional boolean when enabled, allows windows runners to save or restore caches that can be restored or saved respectively on other platforms'
     default: 'false'
     required: false
+  key-path:
+    description: 'A list of files, directories, and wildcard patterns used to detect files which affects cache content'
+    default: '**/pom.xml'
+    required: false
+  wrapper:
+    description: 'Cache the Maven wrapper if the .mvn wrapper directory is detected'
+    default: 'true'
+    required: false
+  cache-key-prefix:
+    description: 'Prefix for cache keys'
+    default: 'maven-cache-github-action'
+    required: false
 outputs:
   cache-restore:
     description: 'A value to indicate result of cache restore: none, partial or full.'

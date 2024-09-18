@@ -4,7 +4,10 @@ import * as os from "os";
 
 import {
     CacheClearSearchString,
+    DefaultKeyPaths,
+    Inputs,
     M2RepositoryPath,
+    MavenWrapperPath,
     Outputs,
     RefKey,
     Restore
@@ -55,6 +58,12 @@ export function ensureMavenDirectoryExists(): string {
     }
     return mavenDirectory;
 }
+
+export function isMavenWrapperDirectory(): boolean {
+    const mavenDirectory = toAbsolutePath(MavenWrapperPath);
+    return fs.existsSync(mavenDirectory)
+}
+
 
 export function getOptionalInputAsString(
     name: string,
@@ -121,4 +130,23 @@ export function getInputAsBool(
 ): boolean {
     const result = core.getInput(name, options);
     return result.toLowerCase() === "true";
+}
+
+export function getCachePaths() {
+    return [M2RepositoryPath];
+}
+
+export function getKeyPaths() {
+    let keyPaths = getInputAsArray(Inputs.KeyPath, {
+        required: false
+    });
+
+    if (keyPaths.length == 0) {
+        keyPaths = DefaultKeyPaths;
+    }
+    return keyPaths;
+}
+
+export function getCacheKeyPrefix() {
+    return getOptionalInputAsString(Inputs.CacheKeyPrefix, 'maven-cache-github-action');
 }
