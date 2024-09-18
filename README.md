@@ -37,13 +37,13 @@ jobs:
           java-version: 21
           distribution: liberica
       - name: Restore Maven cache
-        uses: skjolber/maven-cache-github-action@v3.1
+        uses: skjolber/maven-cache-github-action@v3.1.1
         with:
           step: restore
       - name: Build hello-world application with Maven
         run: mvn --batch-mode --update-snapshots verify
       - name: Save Maven cache
-        uses: skjolber/maven-cache-github-action@v3.1
+        uses: skjolber/maven-cache-github-action@v3.1.1
         with:
           step: save
 ```
