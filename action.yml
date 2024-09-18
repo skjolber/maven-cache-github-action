@@ -1,5 +1,5 @@
 name: 'Maven Cache'
-description: 'Better Maven dependency caching than Github's own cache action.'
+description: "Better Maven dependency caching than Github's own cache action."
 author: 'Thomas Skjølberg'
 inputs:
   step:
