@@ -1,10 +1,11 @@
 # Maven Cache Github Action
-This [Github Action](https://docs.github.com/en/actions) adds improved support for __caching Maven dependencies between builds__ compared to Github's built-in Maven cache.
+This [Github Action](https://docs.github.com/en/actions) adds improved support for __caching Maven dependencies between builds__ compared to Github's built-in Maven cache. 
 
 Features:
   * restores dependency cache with the help of the git history
   * clears unused dependencies before saving caches
-  * Maven wrapper support
+  * caches the Maven wrapper if present
+  * relies on Github Action's built-in cache infrastructure (just like Github's [Cache Action](https://github.com/actions/cache))
 
 Benefits:
   * faster and more predictable builds times
@@ -81,6 +82,11 @@ Combine `cache-key-prefix` with `key-path` to have seperate caches within the sa
 While unused dependencies are contiously removed from the (incremental) cache, it is sometimes necessary to clean the cache completely.
 
 Add `[cache clear]` to a commit-message build with a new, empty cache entry.
+
+## Privacy
+This action only saves/loads dependency data to/from the Github Action cache infrastructure. 
+
+On initial setup, it additionally transfers a [cache cleaning utility](https://github.com/skjolber/maven-pom-recorder) from Maven Central using an HTTP call.
 
 ## License
 The scripts and documentation in this project are released under the [MIT License](LICENSE)
