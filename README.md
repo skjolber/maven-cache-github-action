@@ -8,7 +8,7 @@ Features:
 
 Benefits:
   * faster and more predictable builds times
-  * considerably load reduction on artifact repositories
+  * considerable load reduction on artifact repositories
 
 Audience:
   * primarily intended for use with (private) third party repositories, i.e. 'one repo to rule them all'
@@ -36,13 +36,13 @@ jobs:
           java-version: 21
           distribution: liberica
       - name: Restore Maven cache
-        uses: skjolber/maven-cache-github-action@v3.0
+        uses: skjolber/maven-cache-github-action@v3.1
         with:
           step: restore
       - name: Build hello-world application with Maven
         run: mvn --batch-mode --update-snapshots verify
       - name: Save Maven cache
-        uses: skjolber/maven-cache-github-action@v3.0
+        uses: skjolber/maven-cache-github-action@v3.1
         with:
           step: save
 ```
