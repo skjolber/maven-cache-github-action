@@ -2,12 +2,13 @@
 This [Github Action](https://docs.github.com/en/actions) adds improved support for __caching Maven dependencies between builds__ compared to Github's built-in Maven cache.
 
 Features:
-  * restores previous caches with the help of the git history
+  * restores dependency cache with the help of the git history
   * clears unused dependencies before saving caches
+  * Maven wrapper support
 
 Benefits:
   * faster and more predictable builds times
-  * considerably load reduction on artifact repositories
+  * considerable load reduction on artifact repositories
 
 Audience:
   * primarily intended for use with (private) third party repositories, i.e. 'one repo to rule them all'
@@ -35,25 +36,36 @@ jobs:
           java-version: 21
           distribution: liberica
       - name: Restore Maven cache
-        uses: skjolber/maven-cache-github-action@v3.0
+        uses: skjolber/maven-cache-github-action@v3.1
         with:
           step: restore
       - name: Build hello-world application with Maven
         run: mvn --batch-mode --update-snapshots verify
       - name: Save Maven cache
-        uses: skjolber/maven-cache-github-action@v3.0
+        uses: skjolber/maven-cache-github-action@v3.1
         with:
           step: save
 ```
 
-The second steps saves your cache even if the dependencies were only partially resolved. 
+The second steps saves your cache even if the dependencies were only partially resolved:
+
+ * artifact transfers fails
+ * partial build
 
 ### Inputs
 
-* `step` - Build step, i.e. `restore` or `save` (required).
-* `depth` - Maximum git history depth to search for changes to build files (optional, default 100 commits).
-* `upload-chunk-size` - The chunk size used to split up large files during upload, in bytes (optional).
-* `enableCrossOsArchive` - An optional boolean when enabled, allows windows runners to save or restore caches that can be restored or saved respectively on other platforms (optional, defaults to false).
+Required:
+
+* `step` - Build step, i.e. `restore` or `save`
+
+Optional:
+
+* `key-path`: A list of files and wildcard patterns used to detect files which affects dependency cache content (default: **/pom.xml)
+* `cache-key-prefix`: Prefix for cache keys (default: maven-cache-github-action)
+* `wrapper`: Enable Maven wrapper cache (default: true, but skipped if `.mvn/wrapper/maven-wrapper.properties` is not present)
+* `depth` - Maximum git history depth to search for changes to build files (default: 100 commits).
+* `upload-chunk-size` - The chunk size used to split up large files during upload, in bytes.
+* `enableCrossOsArchive` - An optional boolean when enabled, allows windows runners to save or restore caches that can be restored or saved respectively on other platforms (defaults: false).
 
 ### Outputs
 
@@ -63,11 +75,9 @@ The second steps saves your cache even if the dependencies were only partially r
 	* `full` - cache was restored and is up to date.
 
 ### Cache scopes
-The cache is scoped to the branch. The default branch cache is available to other branches.
+Combine `cache-key-prefix` with `key-path` to have seperate caches within the same repo.
 
-In other words, projects using the `develop` branch will have a performance benefit to making it the default.
-
-### Flushing the cache
+### Flushing the depenency cache
 While unused dependencies are contiously removed from the (incremental) cache, it is sometimes necessary to clean the cache completely.
 
 Add `[cache clear]` to a commit-message build with a new, empty cache entry.
